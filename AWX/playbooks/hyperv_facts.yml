@@ -1,0 +1,13 @@
+---
+- name: Gather Hyper-V VM Facts
+  hosts: hyperv
+  gather_facts: false
+
+  tasks:
+    - name: Gather Hyper-V VM information
+      datadope.discovery.win_hyperv_facts:
+      register: hv_facts
+
+    - name: Show VM facts
+      debug:
+        var: hv_facts.virtual_machines
