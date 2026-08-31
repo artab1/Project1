@@ -1,0 +1,9 @@
+[hyperv]
+Astrophage ansible_host=192.168.1.146
+
+[hyperv:vars]
+ansible_connection=winrm
+ansible_user=Administrator
+ansible_password=YourPassword
+ansible_winrm_server_cert_validation=ignore
+ansible_winrm_transport=ntlm
