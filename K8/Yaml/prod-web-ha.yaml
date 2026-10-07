@@ -1,0 +1,113 @@
+# ---------------------------------------------------------
+# 1. Deployment: Runs your nginx pods with HA and spreading
+# ---------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-prod
+  namespace: prod-web
+  labels:
+    app: nginx-prod
+spec:
+  replicas: 4   # Start with 4 pods → HA across both worker nodes
+
+  selector:
+    matchLabels:
+      app: nginx-prod
+
+  template:
+    metadata:
+      labels:
+        app: nginx-prod
+
+    spec:
+      # Preferred anti-affinity: spread pods across nodes when possible,
+      # but still schedule them even if nodes are limited (your case: 2 workers)
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: nginx-prod
+              topologyKey: kubernetes.io/hostname
+              # Layman: “Try to spread pods across nodes, but don’t block scheduling.”
+
+      containers:
+      - name: nginx
+        image: nginx:stable
+
+        # Resource requests/limits prevent node overload
+        resources:
+          requests:
+            cpu: 100m      # Minimum CPU guaranteed
+            memory: 128Mi  # Minimum RAM guaranteed
+          limits:
+            cpu: 300m      # Maximum CPU allowed
+            memory: 256Mi  # Maximum RAM allowed
+            # Layman: “Requests = guaranteed. Limits = maximum allowed.”
+
+        ports:
+        - containerPort: 80
+
+---
+# ---------------------------------------------------------
+# 2. Service: Internal load balancer for nginx pods
+# ---------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  namespace: prod-web
+spec:
+  selector:
+    app: nginx-prod
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
+  # Layman: “This gives the pods a single stable internal IP.”
+
+---
+# ---------------------------------------------------------
+# 3. PodDisruptionBudget: Ensures minimum pods stay alive
+# ---------------------------------------------------------
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nginx-pdb
+  namespace: prod-web
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: nginx-prod
+  # Layman: “Kubernetes cannot kill more than 2 pods during upgrades.”
+
+---
+# ---------------------------------------------------------
+# 4. HorizontalPodAutoscaler: Auto-scale based on CPU
+# ---------------------------------------------------------
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nginx-prod-hpa
+  namespace: prod-web
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nginx-prod
+
+  minReplicas: 4      # Minimum HA replicas
+  maxReplicas: 20     # Maximum safe replicas based on node capacity
+
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+        # Layman: “If average CPU goes above 50%, add more pods.”
